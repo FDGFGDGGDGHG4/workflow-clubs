@@ -1,8 +1,3 @@
-import { apiRequests } from '../../utils/requests'
-import type { ApiRequest } from '../../../app/types/api'
+import { readRecord } from '../../utils/request-repository'
 
-export default defineEventHandler((event): ApiRequest => {
-  const request = apiRequests.find(r => r.id === getRouterParam(event, 'id'))
-  if (!request) throw createError({ statusCode: 404, statusMessage: 'Request not found' })
-  return request
-})
+export default defineEventHandler(async event => (await readRecord(getRouterParam(event, 'id') || '')).request)

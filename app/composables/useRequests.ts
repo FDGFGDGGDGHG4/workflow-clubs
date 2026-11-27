@@ -37,7 +37,7 @@ export function useRequests() {
     return router[replace ? 'replace' : 'push']({ query: next })
   }
   const lookups = useRequestLookups()
-  const response = useFetch('/api/requests', { query, retry: 0 })
+  const response = useFetch('/api/requests', { key: computed(() => 'request-list:' + JSON.stringify(query.value)), query, retry: 0 })
   const pending = computed(() => response.status.value === 'pending' || lookups.pending.value)
   const error = computed(() => response.error.value || lookups.error.value)
   const message = computed(() => apiErrorMessage(error.value))

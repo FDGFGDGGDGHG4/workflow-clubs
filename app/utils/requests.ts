@@ -4,7 +4,9 @@ export type RequestStatus =
   | 'Ожидает ответа'
   | 'Решена'
 
-export type Priority = 'Высокий' | 'Обычный' | 'Низкий'
+export type Priority = 'Критический' | 'Высокий' | 'Обычный' | 'Низкий'
+export const priorities: Priority[] = ['Критический', 'Высокий', 'Обычный', 'Низкий']
+export const statuses: RequestStatus[] = ['Новая', 'В работе', 'Ожидает ответа', 'Решена']
 
 export interface SupportRequest {
   id: string

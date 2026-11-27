@@ -1,32 +1,34 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { requests } from '~/utils/requests'
+import type { RequestsResponse } from '~/types/api'
+const lookups = useRequestLookups()
+const response = useFetch<RequestsResponse>('/api/requests', { key: 'request-list:overview', query: { pageSize: 100 }, retry: 0 })
+const requests = computed(() => response.data.value?.items ?? [])
 
 const statistics = computed(() => [
   {
     title: 'Новые заявки',
-    count: requests.filter(item => item.status === 'Новая').length,
+    count: requests.value.filter(item => item.status === 'Новая').length,
     description: 'Ожидают назначения',
   },
   {
     title: 'В работе',
-    count: requests.filter(item => item.status === 'В работе').length,
+    count: requests.value.filter(item => item.status === 'В работе').length,
     description: 'Назначены исполнителям',
   },
   {
     title: 'Ожидают ответа',
-    count: requests.filter(item => item.status === 'Ожидает ответа').length,
+    count: requests.value.filter(item => item.status === 'Ожидает ответа').length,
     description: 'Нужна информация',
   },
   {
     title: 'Решены',
-    count: requests.filter(item => item.status === 'Решена').length,
+    count: requests.value.filter(item => item.status === 'Решена').length,
     description: 'Работа завершена',
   },
 ])
 
-// В mock-данных нет дат: показываем первые три заявки.
-const recentRequests = computed(() => requests.slice(0, 3))
+const recentRequests = computed(() => requests.value.slice(0, 3).map(lookups.map))
 </script>
 
 <template>
@@ -34,6 +36,9 @@ const recentRequests = computed(() => requests.slice(0, 3))
     <h1>Обзор</h1>
     <p class="subtitle">Обзор работы с заявками</p>
 
+    <RequestNotice />
+    <p v-if="response.error.value || lookups.error.value" role="alert">Не удалось загрузить обзор. <button type="button" @click="response.refresh(); lookups.refresh()">Повторить</button></p>
+    <p v-if="response.status.value === 'pending'" role="status">Загружаем обзор…</p>
     <div class="statistics">
       <article
         v-for="item in statistics"
