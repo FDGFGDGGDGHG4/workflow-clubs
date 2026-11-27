@@ -1,0 +1,21 @@
+import type { Priority, RequestStatus } from '../utils/requests'
+
+export interface ApiUser { id: string; name: string }
+export interface ApiCustomer { id: string; name: string }
+export interface ApiCategory { id: string; name: string }
+export interface ApiRequest {
+  id: string
+  title: string
+  status: RequestStatus
+  priority: Priority
+  customerId?: string | null
+  assigneeId?: string | null
+  categoryId?: string | null
+  description?: string | null
+}
+export interface RequestsResponse {
+  items: ApiRequest[]
+  total: number
+  page: number
+  pageSize: number
+}
