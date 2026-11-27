@@ -1,13 +1,18 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { requests } from '~/utils/requests'
+import type { ApiRequest } from '~/types/api'
+import { apiErrorMessage } from '~/utils/request-api'
 
 const route = useRoute()
 const id = computed(() => String(route.params.id))
-
-const request = computed(() =>
-  requests.find(item => item.id === id.value),
-)
+const lookups = useRequestLookups()
+const response = useFetch<ApiRequest>(() => '/api/requests/' + encodeURIComponent(id.value), { retry: 0 })
+const request = computed(() => response.data.value ? lookups.map(response.data.value) : null)
+const pending = computed(() => response.status.value === 'pending' || lookups.pending.value)
+const error = computed(() => response.error.value || lookups.error.value)
+const errorMessage = computed(() => apiErrorMessage(error.value))
+const retry = () => Promise.all([response.refresh(), lookups.refresh()])
+const users = lookups.users.data
 
 const comment = ref('')
 const comments = ref<string[]>([])
@@ -29,7 +34,16 @@ function addComment() {
 </script>
 
 <template>
-  <section v-if="request" class="detail">
+  <section v-if="pending" class="panel" aria-busy="true">
+    <p role="status">Загружаем заявку…</p>
+    <div v-for="n in 4" :key="n" class="detail-skeleton" aria-hidden="true" />
+  </section>
+  <section v-else-if="error" class="panel">
+    <p role="alert">{{ errorMessage }}</p>
+    <button v-if="error.statusCode !== 404" type="button" @click="retry()">Повторить загрузку</button>
+    <NuxtLink class="back" to="/requests">← К списку заявок</NuxtLink>
+  </section>
+  <section v-else-if="request" class="detail">
     <NuxtLink class="back" to="/requests">← К списку заявок</NuxtLink>
     <h1>{{ request.title }}</h1>
     <p class="muted">{{ request.id }} · {{ request.client }}</p>
@@ -65,13 +79,12 @@ function addComment() {
       <aside class="panel">
         <h2>Параметры</h2>
         <p>Клиент<br><strong>{{ request.client }}</strong></p>
-        <p>Категория<br><strong>Детские кружки</strong></p>>
+        <p>Категория<br><strong>{{ request.category }}</strong></p>
         <p>Приоритет<br><strong>{{ request.priority }}</strong></p>
         <label for="assignee">Исполнитель</label>
-        <select id="assignee">
+        <select id="assignee" :value="request.assignee">
           <option>Не назначен</option>
-          <option>Ирина К.</option>
-          <option>Дмитрий С.</option>
+          <option v-for="user in users" :key="user.id">{{ user.name }}</option>
         </select>
         <button type="button">Назначить исполнителя</button>
       </aside>
@@ -85,6 +98,7 @@ function addComment() {
 </template>
 
 <style scoped>
+.detail-skeleton { height: 42px; margin: 12px 0; border-radius: 4px; background: #393475; }
 .detail { width: min(100%, 900px); margin: 0 auto; }
 .back, .not-found a { color: #70d5e2; font-size: 13px; }
 h1 { margin: 18px 0 6px; font-size: 24px; }

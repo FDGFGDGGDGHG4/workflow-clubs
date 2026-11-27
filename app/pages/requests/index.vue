@@ -1,122 +1,74 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
-import { requests } from '~/utils/requests'
+import { ref, watch } from 'vue'
 
-type MockState = 'ready' | 'loading' | 'empty' | 'error'
-
-const selectedStatus = ref('')
-const selectedPriority = ref('')
-const search = ref('')
-const state = ref<MockState>('ready')
-
-let timer: ReturnType<typeof setTimeout> | undefined
-
-const filteredRequests = computed(() => {
-  if (state.value === 'empty') return []
-
-  const query = search.value.trim().toLowerCase()
-
-  return requests.filter(request =>
-    (!selectedStatus.value || request.status === selectedStatus.value)
-    && (!selectedPriority.value || request.priority === selectedPriority.value)
-    && (!query || `${request.id} ${request.title}`.toLowerCase().includes(query)),
-  )
+const { query, update, lookups, pending, error, message, items, total, pages, refresh } = useRequests()
+const search = ref(query.value.search)
+const debounce = useDebounce<string>(value => { void update({ search: value.trim(), page: 1 }, true) })
+watch(search, value => {
+  debounce.cancel()
+  if (value !== query.value.search) debounce.run(value)
 })
-
-function changeScenario(event: Event) {
-  clearTimeout(timer)
-  state.value = (event.target as HTMLSelectElement).value as MockState
+watch(() => query.value.search, value => { debounce.cancel(); search.value = value })
+function filter(key: string, event: Event) {
+  debounce.cancel()
+  void update({ [key]: (event.target as HTMLSelectElement).value, search: search.value.trim(), page: 1 })
 }
-
-function retry() {
-  clearTimeout(timer)
-  state.value = 'loading'
-
-  timer = setTimeout(() => {
-    state.value = 'ready'
-  }, 1200)
+function reset() {
+  debounce.cancel()
+  search.value = ''
+  void update({ search: '', status: '', priority: '', customer: '', assignee: '', category: '', sort: 'id-desc', page: 1 })
 }
-
-onBeforeUnmount(() => clearTimeout(timer))
+const users = lookups.users.data
+const customers = lookups.customers.data
+const categories = lookups.categories.data
 </script>
 
 <template>
   <section class="requests-page">
     <p class="eyebrow">ВСЕ ОБРАЩЕНИЯ В ОДНОМ МЕСТЕ</p>
     <div class="heading">
-      <div>
-        <h1>Заявки</h1>
-        <p class="muted">Найдено: {{ filteredRequests.length }}</p>
-      </div>
+      <div><h1>Заявки</h1><p class="muted" aria-live="polite">Найдено: {{ total }}</p></div>
       <CreateRequestModal />
     </div>
-
     <div class="filters">
-      <label>
-        Поиск
-       <input
-  v-model="search"
-  type="search"
-  placeholder="Номер или название заявки"
->
-      </label>
-      <label>
-        Статус
-        <select v-model="selectedStatus">
-          <option value="">Все статусы</option>
-          <option>Новая</option>
-          <option>В работе</option>
-          <option>Ожидает ответа</option>
-          <option>Решена</option>
-        </select>
-      </label>
-      <label>
-        Приоритет
-        <select v-model="selectedPriority">
-          <option value="">Все приоритеты</option>
-          <option>Высокий</option>
-          <option>Обычный</option>
-          <option>Низкий</option>
-        </select>
-      </label>
+      <label class="search">Поиск<input v-model="search" type="search" placeholder="Номер или название заявки"></label>
+      <label>Статус<select :value="query.status" @change="filter('status', $event)">
+        <option value="">Все статусы</option><option>Новая</option><option>В работе</option><option>Ожидает ответа</option><option>Решена</option>
+      </select></label>
+      <label>Приоритет<select :value="query.priority" @change="filter('priority', $event)">
+        <option value="">Все приоритеты</option><option>Высокий</option><option>Обычный</option><option>Низкий</option>
+      </select></label>
+      <label>Клиент<select :value="query.customer" @change="filter('customer', $event)">
+        <option value="">Все клиенты</option><option v-for="item in customers" :key="item.id" :value="item.id">{{ item.name }}</option>
+      </select></label>
+      <label>Исполнитель<select :value="query.assignee" @change="filter('assignee', $event)">
+        <option value="">Все исполнители</option><option v-for="item in users" :key="item.id" :value="item.id">{{ item.name }}</option>
+      </select></label>
+      <label>Категория<select :value="query.category" @change="filter('category', $event)">
+        <option value="">Все категории</option><option v-for="item in categories" :key="item.id" :value="item.id">{{ item.name }}</option>
+      </select></label>
+      <label>Сортировка<select :value="query.sort" @change="filter('sort', $event)">
+        <option value="id-desc">Номер по убыванию</option><option value="id-asc">Номер по возрастанию</option><option value="title">По названию</option>
+      </select></label>
+      <label>На странице<select :value="query.pageSize" @change="filter('pageSize', $event)">
+        <option :value="6">6</option><option :value="12">12</option><option :value="24">24</option>
+      </select></label>
+      <button type="button" @click="reset">Сбросить фильтры</button>
     </div>
-   <div class="mock-controls">
-  <label for="mock-state">Демонстрационный сценарий</label>
-  <select id="mock-state" :value="state" @change="changeScenario">
-    <option value="ready">Обычный список</option>
-    <option value="loading">Загрузка</option>
-    <option value="empty">Пустой список</option>
-    <option value="error">Ошибка загрузки</option>
-  </select>
-</div>
-
-<section
-  v-if="state === 'loading'"
-  class="state-panel"
-  aria-busy="true"
-  aria-label="Загрузка заявок"
->
-  <p role="status">Загружаем заявки…</p>
-  <div
-    v-for="item in 6"
-    :key="item"
-    class="skeleton"
-    aria-hidden="true"
-  />
-</section>
-
-<section
-  v-else-if="state === 'error'"
-  class="state-panel"
->
-  <p role="alert">Не удалось загрузить заявки.</p>
-  <p>Демонстрационная ошибка. Попробуйте ещё раз.</p>
-  <button type="button" @click="retry">
-    Повторить загрузку
-  </button>
-</section>
-
-<RequestList v-else :requests="filteredRequests" />
+    <section v-if="pending" class="state-panel" aria-busy="true" aria-label="Загрузка заявок">
+      <p role="status">Загружаем заявки…</p><div v-for="item in 6" :key="item" class="skeleton" aria-hidden="true" />
+    </section>
+    <section v-else-if="error" class="state-panel">
+      <p role="alert">{{ message }}</p><button type="button" @click="refresh()">Повторить загрузку</button>
+    </section>
+    <template v-else>
+      <RequestList :requests="items" />
+      <nav class="pagination" aria-label="Страницы заявок">
+        <button :disabled="query.page <= 1" @click="update({ page: query.page - 1 })">← Назад</button>
+        <span>Страница {{ query.page }} из {{ pages }}</span>
+        <button :disabled="query.page >= pages" @click="update({ page: query.page + 1 })">Вперёд →</button>
+      </nav>
+    </template>
   </section>
 </template>
 
@@ -126,55 +78,16 @@ onBeforeUnmount(() => clearTimeout(timer))
 .heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 h1 { margin: 8px 0; font-size: 26px; }
 .muted { color: #aaa5c4; font-size: 12px; }
-button {
-  padding: 10px 16px; border: 0; border-radius: 4px;
-  color: white; background: linear-gradient(100deg, #7457ff, #c23fae);
-  cursor: pointer;
-}
-button:hover { filter: brightness(1.12); }
-.filters {
-  display: grid; grid-template-columns: 2fr 1fr 1fr;
-  gap: 12px; margin: 22px 0 14px;
-}
+button { padding: 10px 16px; border: 0; border-radius: 4px; color: white; background: linear-gradient(100deg, #7457ff, #c23fae); cursor: pointer; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+.filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 22px 0; align-items: end; }
 label { display: grid; gap: 6px; color: #c8c3df; font-size: 11px; }
-input, select {
-  width: 100%; min-width: 0; padding: 10px;
-  border: 1px solid #39345f; border-radius: 4px;
-  color: #f2efff; background: #211e45;
-}
+input, select { width: 100%; min-width: 0; padding: 10px; border: 1px solid #39345f; border-radius: 4px; color: #f2efff; background: #211e45; }
 :focus-visible { outline: 2px solid #42d5e9; outline-offset: 2px; }
-.table-wrap { overflow-x: auto; border: 1px solid #302b58; border-radius: 5px; }
-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-th, td { padding: 12px 10px; border-bottom: 1px solid #302b58; text-align: left; }
-th { color: #aaa5c4; background: #211e45; font-weight: 500; }
-td a { color: #8fcfe6; }
-.badge { padding: 4px 7px; border-radius: 10px; background: #39345f; white-space: nowrap; }
-.empty { padding: 32px; border: 1px solid #302b58; text-align: center; color: #aaa5c4; }
-@media (max-width: 650px) {
-  .filters { grid-template-columns: 1fr; }
-  .heading { align-items: flex-start; }
-  table { min-width: 680px; }
-}
-.mock-controls {
-  display: grid;
-  gap: 6px;
-  max-width: 300px;
-  margin: 16px 0;
-}
-
-.state-panel {
-  padding: 24px;
-  border: 1px solid #39345f;
-  border-radius: 5px;
-  background: #211e45;
-  color: #c8c3df;
-  text-align: center;
-}
-
-.skeleton {
-  height: 36px;
-  margin-top: 10px;
-  border-radius: 4px;
-  background: #393475;
-}
+.state-panel { padding: 24px; border: 1px solid #39345f; border-radius: 5px; background: #211e45; color: #c8c3df; text-align: center; }
+.skeleton { height: 36px; margin-top: 10px; border-radius: 4px; background: #393475; animation: pulse 1.2s ease-in-out infinite alternate; }
+.pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; font-size: 12px; }
+@keyframes pulse { to { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
+@media (max-width: 650px) { .filters { grid-template-columns: 1fr; } .heading { align-items: flex-start; } }
 </style>
